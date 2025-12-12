@@ -155,11 +155,16 @@ public class InferenceService
     {
         try
         {
+            // 0. Sanitizar texto de entrada
+            var sanitizedText = _preprocessor.SanitizeText(inputText);
+            _logger.LogInformation("Texto sanitizado: {Length} caracteres", sanitizedText.Length);
+
             // 1. Pré-processar texto
-            var preprocessedText = _preprocessor.PreprocessText(inputText);
+            var preprocessedText = _preprocessor.PreprocessText(sanitizedText);
             _logger.LogInformation(
-                "Texto pré-processado: {Length} caracteres",
-                preprocessedText.Length
+                "Texto pré-processado: {Length} caracteres, primeiras palavras: {Preview}",
+                preprocessedText.Length,
+                string.Join(" ", preprocessedText.Split(' ').Take(10))
             );
 
             // 2. Aplicar TF-IDF N1
@@ -187,20 +192,27 @@ public class InferenceService
 
             var response = new CompletePredictionResponse
             {
+                OriginalText = inputText,
+                SanitizedText = sanitizedText,
                 ProcessedText = preprocessedText,
+                IsClassifiable = true,
                 N1Result = n1Result,
             };
 
             // 4. Se for "Manifestação", aplicar N2
             if (n1Result.ClassName == "Manifestação")
             {
-                _logger.LogInformation("Aplicando classificação N2 (Manifestação detectada)");
+                _logger.LogInformation(
+                    "Aplicando classificação N2 (Manifestação detectada com probabilidade {Prob:P2})",
+                    n1Result.Probabilities[Array.IndexOf(probabilities, probabilities.Max())]
+                );
 
                 // Aplicar TF-IDF N2 (usando o vetorizador específico do N2)
                 var tfidfFeaturesN2 = _tfidfServiceN2.Transform(preprocessedText);
                 _logger.LogInformation(
-                    "Vetor TF-IDF N2 criado: {Size} features",
-                    tfidfFeaturesN2.Length
+                    "Vetor TF-IDF N2 criado: {Size} features, soma: {Sum}",
+                    tfidfFeaturesN2.Length,
+                    tfidfFeaturesN2.Sum()
                 );
 
                 var (n2PredictedClassId, n2Probabilities) = RunInference(
